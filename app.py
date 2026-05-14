@@ -56,7 +56,7 @@ def get_label(key: str):
 def on_connect(client, userdata, flags, rc, props=None):
     if rc == 0:
         st.session_state.status = "✅ CONNECTED"
-        client.subscribe("hive/a")
+        client.subscribe("hive/b")
     else:
         st.session_state.status = f"❌ REFUSED (RC: {rc})"
 
