@@ -121,7 +121,7 @@ def rows_to_df(rows: list) -> pd.DataFrame:
         records.append(flat)
     df = pd.DataFrame(records)
     if "timestamp" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+        df["timestamp"] = pd.to_datetime(df["timestamp"], format="ISO8601", utc=True)
         df["timestamp"] = df["timestamp"].dt.tz_convert(WIB)
     return df
 
