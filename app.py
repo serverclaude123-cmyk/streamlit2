@@ -261,8 +261,9 @@ with tab_chart:
     }
     from_time = (datetime.now(WIB) - range_map[time_range]).isoformat()
 
-    if st.button("📊 Load Chart"):
+    if st.button("Load Chart"):
         try:
+            import altair as alt
             result = (
                 supabase.table(TABLE)
                 .select("timestamp, data")
@@ -273,15 +274,38 @@ with tab_chart:
             )
             chart_df = rows_to_df(result.data)
             if not chart_df.empty and selected_param in chart_df.columns:
-                chart_df = chart_df.set_index("timestamp")
                 chart_df[selected_param] = pd.to_numeric(
                     chart_df[selected_param], errors="coerce"
                 )
+                chart_df = chart_df.dropna(subset=[selected_param])
+                chart_df["time_str"] = chart_df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
                 label, unit = get_label(selected_param)
-                st.markdown(f"**{label}** {'(' + unit + ')' if unit else ''}")
-                st.line_chart(chart_df[[selected_param]])
+                y_title = f"{label} ({unit})" if unit else label
+
+                line = alt.Chart(chart_df).mark_line(color="#00b4d8").encode(
+                    x=alt.X("timestamp:T", title="Time",
+                            axis=alt.Axis(format="%d %b %H:%M", labelAngle=-30)),
+                    y=alt.Y(f"{selected_param}:Q", title=y_title),
+                    tooltip=[
+                        alt.Tooltip("time_str:N", title="Timestamp"),
+                        alt.Tooltip(f"{selected_param}:Q", title=label, format=".2f"),
+                    ]
+                )
+                points = alt.Chart(chart_df).mark_point(
+                    size=30, filled=True, color="#00b4d8", opacity=0.6
+                ).encode(
+                    x="timestamp:T",
+                    y=f"{selected_param}:Q",
+                    tooltip=[
+                        alt.Tooltip("time_str:N", title="Timestamp"),
+                        alt.Tooltip(f"{selected_param}:Q", title=label, format=".2f"),
+                    ]
+                )
+                st.markdown(f"**{label}**" + (f" ({unit})" if unit else ""))
+                st.altair_chart((line + points).interactive().properties(height=400),
+                                use_container_width=True)
             else:
-                st.warning(f"No data found for '{selected_label}' in this range.")
+                st.warning(f"No data found for selected parameter in this range.")
         except Exception as e:
             st.error(f"Chart query failed: {e}")
 
