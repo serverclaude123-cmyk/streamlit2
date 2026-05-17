@@ -128,9 +128,10 @@ def rows_to_df(rows: list) -> pd.DataFrame:
 # --- 10. HELPER: KWh delta calculation ---
 def compute_kwh_delta(df: pd.DataFrame, col: str, freq: str) -> pd.DataFrame:
     """
-    For a cumulative KWh column, compute energy consumed per period.
-    freq: 'D' for daily, 'ME' for monthly-end
-    Strategy: last reading of period minus first reading of period.
+    Correct algorithm for cumulative KWh meter:
+    - Daily  : kwh_used[day N] = last_reading[day N] - last_reading[day N-1]
+    - Monthly: kwh_used[month M] = last_reading[month M] - last_reading[month M-1]
+    This works even when data is sparse within a day.
     """
     if col not in df.columns:
         return pd.DataFrame()
@@ -140,15 +141,28 @@ def compute_kwh_delta(df: pd.DataFrame, col: str, freq: str) -> pd.DataFrame:
     df = df.dropna(subset=[col])
     df = df.sort_values("timestamp")
 
+    # Get the last reading of each period
     if freq == "D":
         df["period"] = df["timestamp"].dt.date
     else:  # monthly
-        df["period"] = df["timestamp"].dt.to_period("M").dt.to_timestamp()
+        df["period"] = df["timestamp"].dt.to_period("M")
 
-    grouped = df.groupby("period")[col].agg(["first", "last"])
-    grouped["kwh_used"] = (grouped["last"] - grouped["first"]).clip(lower=0)
-    grouped = grouped.reset_index()
-    return grouped[["period", "kwh_used"]]
+    # Last reading per period
+    last_per_period = df.groupby("period")[col].last()
+
+    # Delta = current period last - previous period last
+    kwh_used = last_per_period.diff().clip(lower=0)
+    # First period has no previous → drop it (can't know consumption without prior snapshot)
+    kwh_used = kwh_used.iloc[1:]
+
+    result = kwh_used.reset_index()
+    result.columns = ["period", "kwh_used"]
+
+    # Convert period back to date/timestamp for display
+    if freq != "D":
+        result["period"] = result["period"].dt.to_timestamp()
+
+    return result
 
 def fetch_kwh_rows(from_dt: datetime, to_dt: datetime) -> pd.DataFrame:
     """Fetch rows from Supabase for a given WIB datetime range."""
