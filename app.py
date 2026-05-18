@@ -126,12 +126,15 @@ def rows_to_df(rows: list) -> pd.DataFrame:
     return df
 
 # --- 10. HELPER: KWh delta calculation ---
-def compute_kwh_delta(df: pd.DataFrame, col: str, freq: str) -> pd.DataFrame:
+def compute_kwh_delta(df: pd.DataFrame, col: str, freq: str, display_from) -> pd.DataFrame:
     """
     Correct algorithm for cumulative KWh meter:
     - Daily  : kwh_used[day N] = last_reading[day N] - last_reading[day N-1]
     - Monthly: kwh_used[month M] = last_reading[month M] - last_reading[month M-1]
-    This works even when data is sparse within a day.
+
+    We fetch 1 extra period before display_from as a baseline for diff.
+    After diff, we filter to only show periods >= display_from.
+    This is correct even when there is no data the day before.
     """
     if col not in df.columns:
         return pd.DataFrame()
@@ -152,8 +155,6 @@ def compute_kwh_delta(df: pd.DataFrame, col: str, freq: str) -> pd.DataFrame:
 
     # Delta = current period last - previous period last
     kwh_used = last_per_period.diff().clip(lower=0)
-    # First period has no previous → drop it (can't know consumption without prior snapshot)
-    kwh_used = kwh_used.iloc[1:]
 
     result = kwh_used.reset_index()
     result.columns = ["period", "kwh_used"]
@@ -161,6 +162,10 @@ def compute_kwh_delta(df: pd.DataFrame, col: str, freq: str) -> pd.DataFrame:
     # Convert period back to date/timestamp for display
     if freq != "D":
         result["period"] = result["period"].dt.to_timestamp()
+
+    # Filter: only show periods within the requested display range
+    # (baseline period fetched earlier is excluded here)
+    result = result[result["period"] >= display_from].reset_index(drop=True)
 
     return result
 
@@ -341,6 +346,7 @@ with tab_kwh_month:
         try:
             # Build WIB start/end for selected month
             # Fetch 1 day before month start so day 1 has a baseline for diff
+            display_from_month = date(int(year_sel), int(month_sel), 1)
             start_dt = datetime(int(year_sel), int(month_sel), 1, 0, 0, 0, tzinfo=WIB) - timedelta(days=1)
             if int(month_sel) == 12:
                 end_dt = datetime(int(year_sel) + 1, 1, 1, 0, 0, 0, tzinfo=WIB) - timedelta(seconds=1)
@@ -361,7 +367,8 @@ with tab_kwh_month:
                     cols_wanted.append(("KWH_EV", "Energy EV (kWh)"))
 
                 for col_key, col_label in cols_wanted:
-                    delta = compute_kwh_delta(df_raw, col_key, freq="D")
+                    delta = compute_kwh_delta(df_raw, col_key, freq="D",
+                                              display_from=display_from_month)
                     if not delta.empty:
                         delta = delta.rename(columns={"kwh_used": col_label,
                                                       "period": "Date"})
@@ -436,7 +443,9 @@ with tab_kwh_year:
                     cols_wanted.append(("KWH_EV", "Energy EV (kWh)"))
 
                 for col_key, col_label in cols_wanted:
-                    delta = compute_kwh_delta(df_raw, col_key, freq="ME")
+                    display_from_year = pd.Timestamp(f"{int(year_sel2)}-01-01")
+                    delta = compute_kwh_delta(df_raw, col_key, freq="ME",
+                                             display_from=display_from_year)
                     if not delta.empty:
                         delta["month_num"] = pd.to_datetime(delta["period"]).dt.month
                         delta["Month"]     = delta["month_num"].apply(
