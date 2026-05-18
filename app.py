@@ -340,7 +340,8 @@ with tab_kwh_month:
     if col_btn.button("📅 Load Month", use_container_width=True):
         try:
             # Build WIB start/end for selected month
-            start_dt = datetime(int(year_sel), int(month_sel), 1, 0, 0, 0, tzinfo=WIB)
+            # Fetch 1 day before month start so day 1 has a baseline for diff
+            start_dt = datetime(int(year_sel), int(month_sel), 1, 0, 0, 0, tzinfo=WIB) - timedelta(days=1)
             if int(month_sel) == 12:
                 end_dt = datetime(int(year_sel) + 1, 1, 1, 0, 0, 0, tzinfo=WIB) - timedelta(seconds=1)
             else:
@@ -414,7 +415,8 @@ with tab_kwh_year:
 
     if col_btn2.button("📆 Load Year", use_container_width=True):
         try:
-            start_dt = datetime(int(year_sel2), 1,  1,  0, 0, 0, tzinfo=WIB)
+            # Fetch last day of previous year so Jan has a baseline for diff
+            start_dt = datetime(int(year_sel2), 1, 1, 0, 0, 0, tzinfo=WIB) - timedelta(days=1)
             end_dt   = datetime(int(year_sel2), 12, 31, 23, 59, 59, tzinfo=WIB)
 
             with st.spinner("Fetching full year data..."):
